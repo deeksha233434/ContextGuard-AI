@@ -1,7 +1,7 @@
 # 🛡️ ContextGuard AI
 
 *Context-Aware Data Privacy Interceptor for Enterprise AI*  
-Problem Statement 2.2
+
 
 ---
 
