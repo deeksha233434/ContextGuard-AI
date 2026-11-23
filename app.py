@@ -1,13 +1,19 @@
 import streamlit as st
 import re
+import spacy
 
+#load lightweight english nlp model
+@st.cache_resource
+def load_nlp_model():
+    return spacy.load("en_core_web_sm")
+nlp=load_nlp_model()
 # Page Configuration
 st.set_page_config(page_title="ContextGuard AI", page_icon="🛡️", layout="centered")
 
 # App Header
 st.title("🛡️ ContextGuard AI")
 st.subheader("Context-Aware Data Privacy Interceptor for Enterprise AI")
-st.write("Automatically scans prompts for confidential corporate secrets, financial numbers, legal risks, security credentials,personal PII etc.")
+
 
 # Input Box
 user_input = st.text_area(
@@ -60,14 +66,24 @@ def context_guard_engine(text):
 
     # 2. Mask Phone Numbers
     redacted_text = re.sub(r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b|\b\+?\d{10,12}\b', '[REDACTED_PHONE]', redacted_text)
-    # 3. Mask Secret API Keys & Tokens (like sk-live-...)
+    # 3a. Mask Secret API Keys & Tokens (like sk-live-...)
     redacted_text = re.sub(r'\b(sk-live-|sk-test-|bearer\s+)[\w-]+\b', '[REDACTED_API_KEY]', redacted_text, flags=re.IGNORECASE)
+    # 3b. Mask ID Numbers (e.g., spaced 12-digit Aadhaar-style IDs or IDs with hyphens/spaces)
+    redacted_text = re.sub(r'\b\d{4}[\s\-]?\d{3,4}[\s\-]?\d{4}\b', '[REDACTED_ID]', redacted_text)
     # 4. Mask Financial Figures & Amounts
     redacted_text = re.sub(r'\b\$?\d+(\.\d+)?\s?(million|billion|M|B|K|USD|INR|crore)?\b', '[REDACTED_FINANCIAL_FIGURE]', redacted_text, flags=re.IGNORECASE)
     
     # 5. Mask Secret & Confidential Words
     redacted_text = re.sub(r'\b(secret|confidential|internal only|unreleased|lawsuit|audit|password)\b', '[REDACTED_SENSITIVE_TERM]', redacted_text, flags=re.IGNORECASE)
-
+# 6. NLP / NER LAYER (spaCy): Catch contextual PII like Names and Cities
+    doc = nlp(redacted_text)
+    for ent in reversed(doc.ents):
+        if ent.label_ == "PERSON":
+            redacted_text = redacted_text[:ent.start_char] + "[PERSON_REDACTED]" + redacted_text[ent.end_char:]
+        elif ent.label_ in ["GPE", "LOC"]: # Catches cities, states, countries like Puttur
+            redacted_text = redacted_text[:ent.start_char] + "[LOCATION_REDACTED]" + redacted_text[ent.end_char:]
+        elif ent.label_ == "ORG":
+            redacted_text = redacted_text[:ent.start_char] + "[ORG_REDACTED]" + redacted_text[ent.end_char:]
     return redacted_text, detected_context, risk_score
 
 # Action Button
@@ -93,3 +109,4 @@ if st.button("Analyze & Sanitize Text"):
             st.info("✅ *Status:* Input is safe. No critical corporate secrets found.")
     else:
         st.error("Please enter some text to analyze.")
+
